@@ -41,7 +41,7 @@ return {
         rows = { label = 'Rows shown', default = 20, min = 8, max = 40, order = 1 },
         icons = { label = 'Category icons', kind = 'check', default = 1, min = 0, max = 1, order = 2,
                   hint = 'An item the game lists there, beside each category.' },
-        pages = { label = 'Gather every Sales Status page', kind = 'check', default = 1, min = 0, max = 1, order = 3,
-                  hint = "With the server's Sales Status pages (6 a press): pressed again every 2 s until all are in one list. Off: one page a press, as the game." },
+        gather = { label = 'Gather every Sales Status page', kind = 'check', default = 0, min = 0, max = 1, order = 3,
+                   hint = "With the server's Sales Status pages (6 a press): pressed again every 2 s until all are in one list. Off: one page at a time, with a Next page button." },
     },
 };

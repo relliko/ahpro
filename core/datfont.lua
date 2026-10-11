@@ -72,8 +72,14 @@ end
 
 -- A file id's path in the main ROM, through VTABLE.DAT and FTABLE.DAT (an entry is folder * 128 +
 -- file), or nil.
+local tables = {}; -- [dir] = { VTABLE, FTABLE } (read once)
 function datfont.rom_path(dir, id)
-    local v, f = read(dir .. 'VTABLE.DAT'), read(dir .. 'FTABLE.DAT');
+    local t = tables[dir];
+    if (t == nil) then
+        t = { read(dir .. 'VTABLE.DAT'), read(dir .. 'FTABLE.DAT') };
+        tables[dir] = t;
+    end
+    local v, f = t[1], t[2];
     if (v == nil or f == nil or #v <= id or #f < id * 2 + 2 or v:byte(id + 1) ~= 1) then
         return nil;
     end
@@ -177,6 +183,8 @@ local function header(buf, w, h)
     put(104, 0xFF000000);
     put(108, 0x1000);                                          -- a texture
 end
+
+datfont.header = header; -- (core/zonemap: the map pictures)
 
 -- A DDS file (a string) of a w x h image from px[0 .. w*h-1] = { r, g, b, a } (0-255).
 function datfont.dds(w, h, px)

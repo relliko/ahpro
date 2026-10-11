@@ -2,7 +2,8 @@
 * facelift - windows/runtime
 * Runs the windows (windows/init) every frame:
 *   1. finds each part's game menu: the focused one, or (show = 'open') one that's open under it
-*      (a window that follows others has no parts: it shows beside the one of them drawn)
+*      (a window that follows others has no parts: it shows beside the one of them drawn; one
+*      that's always up has none either: it shows whenever the game shows its interface)
 *   2. reads it through its adapter; a focused part that doesn't read right means the game's own
 *      window shows, untouched
 *   3. hides the game's menus the window covers, places the window (layout/place) and draws its pane
@@ -65,7 +66,8 @@ function runtime.make(spec)
     -- An option's value: the player's (layout edit mode), else the window's default.
     w.opt = function (name)
         local o = store.get(spec.id);
-        local v = o ~= nil and o.opts ~= nil and o.opts[name] or nil;
+        -- (rawget: the saved tables are Ashita's T{}, whose methods (all, any, ...) would answer a name)
+        local v = o ~= nil and type(o.opts) == 'table' and rawget(o.opts, name) or nil;
         if (v ~= nil) then
             return v;
         end
@@ -403,6 +405,18 @@ local function avoid(w, L, o, pl, we)
     pl.x, pl.y = x0 + pl.px * ww, y0 + pl.py * wh;
 end
 
+-- Whether a window with takes_if takes its parts and suppressed menus now: that option on, or that
+-- function(w, focus) true.
+local function takes(w, focus)
+    local t = w.spec.takes_if;
+    if (t == nil) then
+        return true;
+    elseif (type(t) == 'function') then
+        return t(w, focus) == true;
+    end
+    return w.opt(t) == 1;
+end
+
 local function step(w, focus, env, look)
     local spec = w.spec;
     -- A window standing aside while another is up (unless_up), or while a game menu is open (unless_open).
@@ -430,6 +444,17 @@ local function step(w, focus, env, look)
         if (not lead(w)) then
             return;
         end
+    elseif (spec.always) then
+        if (menus.game_hides() == true) then
+            return; -- (the game's interface hidden, or a cutscene: none of it shows)
+        end
+        if (#w.parts > 0 and takes(w, focus)) then
+            parts(w, focus, look); -- (its parts, when their menus are up: up without them all the same)
+        else
+            for _, p in ipairs(w.parts) do
+                p.live, p.focused = false, false;
+            end
+        end
     elseif (not parts(w, focus, look)) then
         return;
     end
@@ -452,8 +477,10 @@ local function step(w, focus, env, look)
             hide.cover(p.obj, w); -- (keep_game: the adapter needs the game's own drawing this frame)
         end
     end
-    for _, name in ipairs(spec.suppress or NONE) do
-        hide.cover(menus.find(name), w);
+    if (takes(w, focus)) then
+        for _, name in ipairs(spec.suppress or NONE) do
+            hide.cover(menus.find(name), w);
+        end
     end
 
     local L, o = effective(w);
@@ -586,7 +613,14 @@ local function step(w, focus, env, look)
         pad_y = math.max(2, (own.h * we.scale - imgui.GetFontSize() * we.fs) / 2);
     end
     local flags = w.flags;
-    if ((spec.mouse == false or (spec.mouse == 'unscaled' and (w.grow or 1) == 1)) and not edit.on) then
+    -- A window moved by Shift + drag (movable = 'shift'): while Shift is held (or it's being dragged) it
+    -- can be moved, and takes the mouse even with mouse = false (the recast bars: else the mouse goes
+    -- through to the game); one that takes the mouse anyway (the map) keeps it for its own controls.
+    local shifted = false;
+    if (spec.movable == 'shift' and not edit.on) then
+        shifted = w.grabbed == true or imgui.GetIO().KeyShift == true;
+    end
+    if (((spec.mouse == false and not shifted) or (spec.mouse == 'unscaled' and (w.grow or 1) == 1)) and not edit.on) then
         flags = bit.bor(flags, ImGuiWindowFlags_NoMouseInputs); -- the game gets the mouse there
     end
     -- A window's own background opacity (spec.bg: its options <bg>_own, on, and <bg>, a percent).
@@ -595,14 +629,14 @@ local function step(w, focus, env, look)
         bg_a = (w.opt(spec.bg) or 0) / 100;
     end
     local area = theme.begin_area(spec.look); -- (its part of the interface's own theme, if it has one)
-    if (theme.window(spec.imgui, we.fs, flags, edit.on or (spec.movable == true and 'quiet'), spec.solid, pad_y, bg_a)) then
+    if (theme.window(spec.imgui, we.fs, flags, edit.on or ((spec.movable == true or shifted) and 'quiet'), spec.solid, pad_y, bg_a)) then
         local r = w.rect;
         r.x, r.y = imgui.GetWindowPos();
         r.w, r.h = imgui.GetWindowSize();
         w.drawn = frames;
         if (edit.on) then
             edit.chrome(w, L, a, own, we, pl, runtime.list);
-        elseif (spec.movable == true) then
+        elseif (spec.movable == true or shifted) then
             edit.drag(w, L, a, own, we, pl, true); -- (dragged by its empty space, kept where it's dropped)
         end
         w.pane.draw(w.pane_state, w, we);

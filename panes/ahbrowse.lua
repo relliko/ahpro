@@ -33,8 +33,10 @@
 * or stack, and price (its Remove deletes one such listing), and only on the page it last showed:
 * clicking one from another page presses on to that page, checks its slot still holds the same, and
 * then opens its menu (Price history / Remove) as the game's Enter does; if it doesn't, the list
-* starts again. Sales Status: one press per 5 seconds (the server
-* refuses it again sooner).
+* starts again. That's an option (gather, off at first): otherwise the page shown is the game's own
+* list with the server's page and a Next page button beside its count, which presses Sales Status
+* again (the game's own key, as a player cycles it). Sales Status: one press per 5 seconds without the
+* module (the server refuses it again sooner), one per CYCLE s with it.
 --]]
 
 local imgui    = require('ui.gui');
@@ -238,7 +240,7 @@ end
 * listing on another page was clicked); goes to a clicked listing's page and opens it there.
 --]]
 local function sales_pages(st, w, sp, mode, now)
-    if (not ahpages.active or w.opt('pages') == 0) then
+    if (not ahpages.active or w.opt('gather') ~= 1) then
         return nil;
     end
     st.sp = st.sp or new_pages();
@@ -432,9 +434,13 @@ function P.draw(st, w, env)
     local cm, lm = cats.model, lp.model;
     local now = os.clock();
     local mode = (part.sell.live and 'sell') or (part.sales.live and 'sales')
-        or (st.sp ~= nil and now < st.sp.hold and 'sales') or 'bid'; -- (between pages: still Sales Status)
+        or (st.sp ~= nil and now < st.sp.hold and 'sales') or (st.next_hold ~= nil and now < st.next_hold and 'sales')
+        or 'bid'; -- (between pages: still Sales Status)
     if (part.sales.live and st.sp ~= nil) then
         st.sp.hold = 0;
+    end
+    if (part.sales.live and st.next_hold ~= nil and now - (st.sales_at or 0) > 0.5) then
+        st.next_hold = nil; -- (the next page is up)
     end
     local pages = sales_pages(st, w, part.sales, mode, now);
 
@@ -609,6 +615,20 @@ function P.draw(st, w, env)
         end
         if (pages ~= nil and S.note ~= nil) then
             imgui.TextColored(theme.WARN, S.note);
+        end
+        -- One page at a time (the server's pages, not gathered): which, and Next page.
+        if (pages == nil and ahpages.active) then
+            imgui.SameLine(0, 8 * fs);
+            local of = ahpages.total ~= nil and math.max(1, math.ceil(ahpages.total / 6)) or nil;
+            imgui.TextColored(theme.DIM, of ~= nil and ('page %d of %d'):fmt(ahpages.page or 1, of) or ('page %d'):fmt(ahpages.page or 1));
+            imgui.SameLine(0, 8 * fs);
+            local wait = now - (st.sales_at or -10) < CYCLE or st.goal ~= nil;
+            if (wait) then
+                imgui.TextColored(theme.FAINT, 'Next page'); -- (the server takes one press each 1.5 s)
+            elseif (imgui.SmallButton('Next page##ahb_next')) then
+                st.goal = { 'auc1', 3, again = true, at = now, done = false };
+                st.sales_at, st.next_hold = now, now + 4;
+            end
         end
         local clicked, hovered = listings.draw(st.sales, rows, index, key, fs, mw - 24 * fs);
         if (clicked ~= nil) then

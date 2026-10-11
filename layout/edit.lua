@@ -28,7 +28,7 @@ end
 
 -- Whether the runtime should leave the window where it is (the player is dragging it).
 function edit.held(w)
-    return (edit.on or w.spec.movable == true) and w.grabbed == true;
+    return (edit.on or w.spec.movable == true or w.spec.movable == 'shift') and w.grabbed == true;
 end
 
 local SCREEN_FIELDS = { dx = false, dy = false, target = false, at = false };

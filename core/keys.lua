@@ -11,6 +11,10 @@
 * does): the game's read of Tab is cleared, so it doesn't also cycle the game's target; a moment
 * after the box stops asking, the game has it again.
 *
+* M, for the map window (keys.map: set each frame by facelift.lua, whether M may act now): pressed
+* with no Shift, Ctrl or Alt, counted in keys.map_presses (facelift.lua takes them in its frame) and
+* cleared from the game's read until it's let go.
+*
 * It only ever clears these keys, never presses one.
 --]]
 
@@ -18,7 +22,11 @@ local ffi = require('ffi');
 
 local keys = {};
 
-local DIK_RETURN, DIK_NUMPADENTER, DIK_TAB = 0x1C, 0x9C, 0x0F;
+local DIK_RETURN, DIK_NUMPADENTER, DIK_TAB, DIK_M = 0x1C, 0x9C, 0x0F, 0x32;
+local MODS = { 0x2A, 0x36, 0x1D, 0x9D, 0x38, 0xB8 }; -- (Shift, Ctrl, Alt: left and right)
+keys.map = false;      -- M may act now (no menu focused, the chat line closed, no ImGui field typing)
+keys.map_presses = 0;  -- presses not yet taken
+local m_down, m_held = false, false;
 local active, until_t = false, 0;
 local tab_until = 0;
 
@@ -44,6 +52,26 @@ function keys.key_state(e)
     if (os.clock() < tab_until) then
         ffi.cast('uint8_t*', e.data_raw)[DIK_TAB] = 0;
     end
+    local kb = ffi.cast('uint8_t*', e.data_raw);
+    local down = kb[DIK_M] >= 0x80;
+    if (down and not m_down and keys.map) then
+        local mod = false;
+        for _, k in ipairs(MODS) do
+            mod = mod or kb[k] >= 0x80;
+        end
+        if (not mod) then
+            keys.map_presses = keys.map_presses + 1;
+            m_held = true;
+        end
+    end
+    m_down = down;
+    if (m_held) then
+        if (down) then
+            kb[DIK_M] = 0;
+        else
+            m_held = false;
+        end
+    end
     if (not active) then
         return;
     end
@@ -58,6 +86,7 @@ end
 -- facelift stopped or unloading: the game gets Enter again.
 function keys.reset()
     active, tab_until = false, 0;
+    keys.map, keys.map_presses, m_held = false, 0, false;
 end
 
 function keys.active()
