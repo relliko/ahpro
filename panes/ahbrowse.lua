@@ -616,9 +616,9 @@ function P.draw(st, w, env)
         if (pages ~= nil and S.note ~= nil) then
             imgui.TextColored(theme.WARN, S.note);
         end
-        -- One page at a time (the server's pages, not gathered): which, and Next page.
+        -- One page at a time (the server's pages, not gathered): which, and Next page, on a line of
+        -- their own (the column is too narrow for them beside the count).
         if (pages == nil and ahpages.active) then
-            imgui.SameLine(0, 8 * fs);
             local of = ahpages.total ~= nil and math.max(1, math.ceil(ahpages.total / 6)) or nil;
             imgui.TextColored(theme.DIM, of ~= nil and ('page %d of %d'):fmt(ahpages.page or 1, of) or ('page %d'):fmt(ahpages.page or 1));
             imgui.SameLine(0, 8 * fs);
