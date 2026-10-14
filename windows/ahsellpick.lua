@@ -18,6 +18,7 @@ return {
         { name = 'list', menus = { 'inventor' }, adapter = 'sellpick' },
     },
     suppress = suppress,
+    unless_lingering = { 'ahhisto' }, -- (the price history stays up while the game asks about the sale)
     look = 'ah', -- (the auction house's theme: ui/theme AREAS)
     pane = 'sellpick',
     layout = { from = 'menu', w = { 'from', min = 340 }, h = 0, clamp = true, auto = true },

@@ -119,6 +119,19 @@ A.actions = {
             return;
         end
         if (A.read(p, now) and now.cb ~= 0 and (v == -1 or (now.value >= 0 and now.value <= now.max))) then
+            if (v == nil) then
+                -- (the game's question after it goes where this box is: adapters/yesno)
+                local about = nil;
+                if (now.item ~= nil) then -- (an AH bid or sale)
+                    local item = AshitaCore:GetResourceManager():GetItemById(now.item.id);
+                    local name = require('core.gametext').name(item, now.item.id);
+                    if (now.item.stack) then
+                        name = ('%s x%d'):format(name, item ~= nil and item.StackSize or 1);
+                    end
+                    about = { id = now.item.id, stack = now.item.stack, value = now.value, name = name, sale = now.kind == 'ahsell' };
+                end
+                require('adapters.yesno').sent('pricebox', about);
+            end
             game.call('numberbox.confirm', p.handler, v or now.value);
         end
     end,

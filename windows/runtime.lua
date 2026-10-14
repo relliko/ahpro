@@ -22,6 +22,7 @@ local game  = require('core.game');
 local place = require('layout.place');
 local store = require('layout.store');
 local clock = require('core.clock');
+local perf = require('core.perf');
 local edit  = require('layout.edit');
 
 local runtime = {
@@ -419,9 +420,17 @@ end
 
 local function step(w, focus, env, look)
     local spec = w.spec;
-    -- A window standing aside while another is up (unless_up), or while a game menu is open (unless_open).
+    w.lingering = false;
+    -- A window standing aside while another is up (unless_up), or while a game menu is open (unless_open),
+    -- or while another lingers (unless_lingering: this frame's, for one before it in windows/init).
     for _, id in ipairs(spec.unless_up or NONE) do
         if (up(id, w)) then
+            return;
+        end
+    end
+    for _, id in ipairs(spec.unless_lingering or NONE) do
+        local t = runtime.by_id[id];
+        if (t ~= nil and t ~= w and t.lingering and t.drawn >= frames - 1) then -- (not one since switched off)
             return;
         end
     end
@@ -456,7 +465,13 @@ local function step(w, focus, env, look)
             end
         end
     elseif (not parts(w, focus, look)) then
-        return;
+        -- A window that lingers (spec.linger(w) true) once its menus are gone: drawn on as it was last
+        -- read, for looking only (its parts aren't live: nothing asked of them reaches the game), where
+        -- it was. The price history while the game asks about the sale (the game closed it to ask).
+        if (spec.linger == nil or w.drawn < 0 or not spec.linger(w)) then
+            return;
+        end
+        w.lingering = true;
     end
 
     -- A pick made through another menu, now that its part has focus again.
@@ -675,12 +690,14 @@ local function step(w, focus, env, look)
 end
 
 local function run(w, focus, env, look)
-    local t0 = runtime.measure and clock.now() or nil;
+    local t0 = (runtime.measure or perf.on) and clock.now() or nil;
+    local k0 = perf.on and collectgarbage('count') or nil;
     local gm, tm = imgui.mark(), theme.mark();
     local ok, err = xpcall(step, debug.traceback, w, focus, env, look);
     if (t0 ~= nil) then
         local ms = (clock.now() - t0) * 1000;
         w.cost = w.cost ~= nil and (w.cost * 0.9 + ms * 0.1) or ms;
+        perf.add('w:' .. tostring(w.id), ms, 1, k0 and (collectgarbage('count') - k0));
     end
     if (not ok) then
         imgui.unwind(gm);
@@ -710,7 +727,8 @@ function runtime.frame(windows, focus, env, on)
     local look = f ~= last_focus or frames % LOOK_EVERY == 0;
     last_focus = f;
     for _, w in ipairs(windows) do
-        if (not w.off and on(w) and runtime.ready(w)) then
+        w.enabled = not w.off and on(w) and runtime.ready(w); -- (switched on and working: others may ask)
+        if (w.enabled) then
             run(w, focus, env, look);
         end
     end

@@ -32,6 +32,7 @@ return {
     },
     suppress = suppress,
     unless_open = { 'auchisto' }, -- (the price history takes the list's place: its own window)
+    unless_lingering = { 'ahhisto' }, -- (and stays there while the game asks about a sale)
     look = 'ah', -- (the auction house's theme: ui/theme AREAS)
     pane = 'ahbrowse',
     movable = true, -- (drag it by its empty space; kept per character, Reset in edit mode)
