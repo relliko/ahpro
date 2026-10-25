@@ -9,6 +9,9 @@
 *   ptr:  the address stored at match + off (an operand in the code)
 --]]
 
+-- The storage list's ctor (0x1DC460): its vtable, then the three helpers it makes.
+local STORAGE_CTOR = '5333DB56538BF1E8????????C706????????66895E5066895E52895E54895E58895E5C885E70885E71885E72A1????????3BC375216A0CE8????????83C4043BC3740DC700????????A3????????EB06891D????????391D????????75216A0CE8????????83C4043BC3740DC700????????A3????????EB06891D????????391D????????';
+
 return {
     { name = 'menu.focus', kind = 'ptr', off = 16, doc = 0x15FDE2,
       pat = '8B480C85C974??8B510885D274??3B05',
@@ -105,9 +108,25 @@ return {
     { name = 'inventory.slot', kind = 'ptr', off = 16, doc = 0x1DA668,
       pat = '83C40850E8????????A1????????8B0D????????50E8',
       note = 'the same spot: the inventory list handler\'s slot (VA 04AF3740); +0x5C is the helper it was opened with' },
+    -- The storages beside your bag (menu 'bank': the Mog Satchel, Sack, Case, Safe...; research
+    -- notes-storage.md): its handler's ctor, which also makes the pair's helpers.
+    { name = 'storage.vtable', kind = 'ptr', off = 14, doc = 0x1DC460, pat = STORAGE_CTOR,
+      note = 'the storage list\'s vtable (VA 047C8D88, on the scroll list base), stored by its ctor' },
+    { name = 'storage.inv_helper', kind = 'ptr', off = 45, doc = 0x1DC460, pat = STORAGE_CTOR,
+      note = 'the same ctor: the slot of the pair\'s inventory-side helper (VA 04AF346C; the bag list opened with it moves an item to the storage, a single one at once: 0x029)' },
+    { name = 'storage.helper', kind = 'ptr', off = 88, doc = 0x1DC460, pat = STORAGE_CTOR,
+      note = 'the same ctor: the slot of the storage-side helper (VA 04AF3470; +8 its bag, +4/+5 the item being moved; colours by 0x1DB220)' },
+    { name = 'storage.rearrange', kind = 'ptr', off = 129, doc = 0x1DC460, pat = STORAGE_CTOR,
+      note = 'the same ctor: the slot of the storage\'s rearrange helper (VA 04AF3474; +0xC its bag, +4/+6 the item picked; colours by 0x1DBDB0)' },
+    { name = 'storage.wardrobes', kind = 'ptr', off = 1, doc = 0x1DB342,
+      pat = 'A1????????8B88B4000000C1E907F6C101',
+      note = 'in the storage colour rule: the pointer (VA 047F01BC) whose +0xB4 dword has a bit for each of Mog Wardrobes 3-8 you have (bag 11 bit 2 ... 16 bit 7)' },
     { name = 'numberbox.ahsell', kind = 'code', doc = 0x1D9A20,
       pat = '8B44240485C07E578B0D????????6A006A01A3????????8B4424106A006A006A005068',
       note = 'the auction house sale price\'s OK callback (the box opened at 0x1D99CF; it asks the game\'s own yes/no, then the fee); not required' },
+    { name = 'ahsell.price', kind = 'ptr', off = 19, doc = 0x1D9A20,
+      pat = '8B44240485C07E578B0D????????6A006A01A3????????8B4424106A006A006A005068',
+      note = 'in the sale price\'s OK callback: the global it keeps the price in (VA 0480EDD4): the price on OK, -1 on Cancel (0x1D9A85); not required' },
     { name = 'ahsell.single', kind = 'ptr', off = 27, doc = 0x1D99CF,
       pat = '8B0D????????33C084DB5768????????0F94C068FFC99A3B6A00A3????????E8',
       note = 'where the sale price box opens: the global saying single (1) or a full stack (0), set just before (VA 04AF3464)' },
@@ -417,4 +436,32 @@ return {
     { name = 'clock.offset', kind = 'ptr', off = 7, doc = 0x1039E0,
       pat = 'E8????????0305????????C3',
       note = 'the offset added to the clock (VA 04970AF8)' },
+    -- The static menu table, which opening a menu copies from (0x15E950), for menus the game opens again
+    -- every frame (core/hide).
+    { name = 'menu.statics', kind = 'ptr', off = 1, doc = 0x15E950,
+      pat = 'A0????????535533D233ED563AC2570F84????????BE????????8BFE8B442418',
+      note = "the static menu table (VA 048022D8: rows of 0x2C, the name first), where opening a menu looks its name up" },
+    { name = 'menu.static_layer', kind = 'ptr', off = 20, doc = 0x15E9C0,
+      pat = '8A98????????8859308BB0????????8971348A98????????885960',
+      note = "the table's layer column (VA 04802301, row +0x29), which opening copies to the menu's +0x60" },
+    -- The region map's points boxes (client-notes 'The region map's points boxes'): four places in the
+    -- game's getter 0x1E8500 (conquest 0, Besieged 1), one pattern.
+    { name = 'conquest.loaded', kind = 'ptr', off = 16, doc = 0x1E8500,
+      pat = '8B44240483E800743B48740333C0C3A0????????84C075066A026A06EB0DA1????????85C075356A026A056A09E8????????8B0D????????83C40850E8????????33C0C3A0????????84C075066A026A06EBD8A0????????84C075CBB8????????C3',
+      note = "byte VA 04AF3588: the server's 0x05E has come (set by its reply callback 0x1E80F0)" },
+    { name = 'conquest.besieged', kind = 'ptr', off = 31, doc = 0x1E8500,
+      pat = '8B44240483E800743B48740333C0C3A0????????84C075066A026A06EB0DA1????????85C075356A026A056A09E8????????8B0D????????83C40850E8????????33C0C3A0????????84C075066A026A06EBD8A0????????84C075CBB8????????C3',
+      note = 'u32 VA 04AF362C (the record +0x98): non-zero while the Besieged numbers are there' },
+    { name = 'conquest.off', kind = 'ptr', off = 84, doc = 0x1E8500,
+      pat = '8B44240483E800743B48740333C0C3A0????????84C075066A026A06EB0DA1????????85C075356A026A056A09E8????????8B0D????????83C40850E8????????33C0C3A0????????84C075066A026A06EBD8A0????????84C075CBB8????????C3',
+      note = 'byte VA 04AF3628 (the record +0x94): set while there are no conquest numbers for you' },
+    { name = 'conquest.record', kind = 'ptr', off = 93, doc = 0x1E8500,
+      pat = '8B44240483E800743B48740333C0C3A0????????84C075066A026A06EB0DA1????????85C075356A026A056A09E8????????8B0D????????83C40850E8????????33C0C3A0????????84C075066A026A06EBD8A0????????84C075CBB8????????C3',
+      note = 'VA 04AF3594: the 0x05E record (0xB0 bytes, as sent from +0x04): +0x8C conquest points, +0xAC Imperial Standing' },
+    { name = 'conquest.allied', kind = 'ptr', off = 1, doc = 0x1E8880,
+      pat = 'A1????????85C0751C6A026A066A09E8????????8B0D????????83C40850E8????????33C0C3',
+      note = 'VA 04AF3644: a pointer to your Allied Notes (u32), 0 until the Campaign numbers come; not required' },
+    { name = 'conquest.bayld', kind = 'ptr', off = 11, doc = 0x1E8260,
+      pat = '33C933C0A3????????890D????????66A3????????B8????????BA03000000',
+      note = 'VA 04AF3560: your Bayld (u32), cleared where the Adoulin numbers come in; not required' },
 };

@@ -125,6 +125,7 @@ do
     else
         prices.path = base .. 'ahpro/prices.tsv';
     end
+    require('db.asks').path = (prices.path:gsub('prices%.tsv$', 'asks.tsv')); -- (your asking prices, beside them)
 end
 
 settings.register('settings', 'ahpro_settings_update', function (s)

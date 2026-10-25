@@ -17,12 +17,16 @@
 * selected, and only Yes makes the bid. A sale (the Sell flow, 0x1D99CF) has OK callback 0x1D9A20
 * (sig numberbox.ahsell) and ctx = the inventory item (+0 id); whether it's a full stack is the
 * global the game sets just before (sig ahsell.single: 1 single, 0 stack). The game then asks its
-* own yes/no and shows the fee before anything is listed.
+* own yes/no and shows the fee before anything is listed. The sale's callback keeps the price in a
+* global of its own (sig ahsell.price): the price on OK, -1 on Cancel. So m.kept_sale (that global)
+* equal to a sale box's last number means the game's own Enter took it (panes/pricebox keeps it as
+* your asking price).
 --]]
 
 local safemem = require('core.safemem');
 local sigs    = require('core.sigs');
 local game    = require('core.game');
+local asks    = require('db.asks');
 
 local A = {
     sigs = { 'numberbox.confirm', 'numberbox.oninput' },
@@ -30,7 +34,7 @@ local A = {
 
 function A.new()
     return { x = 0, y = 0, w = 0, h = 0, step = 0, max = 0, value = 0, cb = 0, ctx = 0, gil = nil,
-             kind = 'other', item = nil, handler = 0, bid = { id = 0, stack = false } };
+             kind = 'other', item = nil, handler = 0, kept_sale = nil, bid = { id = 0, stack = false } };
 end
 
 local function gil_on_hand()
@@ -99,6 +103,8 @@ function A.read(p, m)
     m.handler = h;
     m.item = (m.kind == 'ahbid' and bid_item(m)) or (m.kind == 'ahsell' and sell_item(m)) or nil;
     m.gil = gil_on_hand();
+    local kept = sigs.get('ahsell.price');
+    m.kept_sale = kept ~= 0 and safemem.u32(kept) or nil;
     return true;
 end
 
@@ -129,6 +135,9 @@ A.actions = {
                         name = ('%s x%d'):format(name, item ~= nil and item.StackSize or 1);
                     end
                     about = { id = now.item.id, stack = now.item.stack, value = now.value, name = name, sale = now.kind == 'ahsell' };
+                    if (now.kind == 'ahsell') then
+                        asks.set(now.item.id, now.item.stack, now.value); -- (the next sale of it starts there)
+                    end
                 end
                 require('adapters.yesno').sent('pricebox', about);
             end

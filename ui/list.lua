@@ -6,7 +6,8 @@
 * game picture for its icon, when it's not an item: a spell's),
 * faint (drawn faint: can't be chosen), color (the name's own colour, as the game gives it), tint (the
 * icon's colour as the game gives it: a linkshell item's, core/lsitem), sub (a second, quieter line
-* under the name: a spell's cost), wait (right is a recast running: amber) }.
+* under the name: a spell's cost), wait (right is a recast running: amber), locked (a padlock at the
+* right: a job trait you're too low for) }.
 *
 * st.fixed (set by the pane): always page rows tall, even with fewer rows.
 * st.rich (set by the pane): roomier rows with bigger icons, each two lines tall (the sub on the second),
@@ -308,6 +309,15 @@ function list.draw(st, rows, index, page, key, fs, ww, head, button, geom)
                     -- Text at the right (a price, a level, a recast...), ending at the row's right edge.
                     imgui.SameLine(math.max(icon + 8 * fs, n_x + 36 * fs - imgui.CalcTextSize(r.right) - 4 * fs));
                     imgui.TextColored(r.wait and theme.WARN or (none and theme.FAINT or theme.TEXT), r.right);
+                end
+                if (r.locked) then
+                    -- A padlock at the row's right (a trait you're too low for): a rounded shackle, the body over its foot.
+                    local dl = imgui.GetWindowDrawList();
+                    local lw, lh = 10 * fs, 12 * fs;
+                    local x, y = cx + n_x + 36 * fs - lw - 6 * fs, cy + (line - 2 * fs - lh) / 2;
+                    local col = imgui.GetColorU32(theme.DIM);
+                    dl:AddRect({ x + 2 * fs, y }, { x + lw - 2 * fs, y + lh * 0.75 }, col, (lw - 4 * fs) / 2, 0, 1.5 * fs);
+                    dl:AddRectFilled({ x, y + lh * 0.45 }, { x + lw, y + lh }, col, 1.5 * fs);
                 end
                 if (rich and r.sub ~= nil) then
                     -- The second line (a cost), smaller and quieter, under the name.

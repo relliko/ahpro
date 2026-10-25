@@ -38,12 +38,20 @@ local PICK_FOR = 2;    -- seconds a pick made through another menu stays good
 local LOOK_EVERY = 30; -- frames between looks for an 'open' part that wasn't open (else on focus changes)
 local MAX = { 4000, 4000 };
 
--- How the menu on top is closed when a part is picked through it (see windows/init, through).
+-- How the menu on top is left when a part is picked through it (see windows/init, through): closed,
+-- or (a storage's pair, notes-storage.md) the game's own Left / Right to the other half.
 local closers = {
     close_obj = function (focus)
         game.call('menu.close_obj', menus.manager(), focus.obj, 1);
     end,
+    left = function (focus)
+        game.call('menu.input', focus.obj, 3);
+    end,
+    right = function (focus)
+        game.call('menu.input', focus.obj, 4);
+    end,
 };
+local CLOSER_SIG = { close_obj = 'menu.close_obj', left = 'menu.input', right = 'menu.input' };
 
 local loaded = {};
 local function load(kind, name)
@@ -124,8 +132,8 @@ function runtime.make(spec)
         else
             need(ps.oninput);
         end
-        if (ps.through ~= nil) then
-            need('menu.close_obj');
+        for _, how in pairs(ps.through or NONE) do
+            need(CLOSER_SIG[how]);
         end
         w.parts[i], w.part[ps.name] = p, p;
         w.reqs[ps.name] = function (action, arg) w.req(ps.name, action, arg); end;
@@ -183,7 +191,8 @@ end
 
 --[[
 * The menus some window names (its parts' menus and the ones it suppresses), on or off: a part of
-* any menu ('*') leaves those to their own windows, or to the game when those are off.
+* any menu ('*') leaves those to their own windows, or to the game when those are off. A part with
+* claim = false only follows its menu (with cover = false: another window draws it).
 --]]
 local named = nil;
 local function claimed()
@@ -191,7 +200,7 @@ local function claimed()
         named = {};
         for _, w in ipairs(runtime.list) do
             for _, ps in ipairs(w.spec.parts or NONE) do
-                if (type(ps.menus) == 'table') then
+                if (type(ps.menus) == 'table' and ps.claim ~= false) then
                     for _, n in ipairs(ps.menus) do
                         named[n] = true;
                     end
@@ -369,7 +378,8 @@ end
 * A layout's avoid list ({ id, ... }): windows this one mustn't cover (the item tooltip, where the
 * game put its own, over facelift's chat box, taller than the game's log; the bag's list beside
 * another list, both wider than the game's). Landing on one, it moves the least way that clears it
-* and stays on the screen: above, below, to its right or to its left (else it stays). Its size is
+* and stays on the screen: above, below, to its right or to its left (else it stays); with avoid_side,
+* to its right or left whenever either has room, above or below only when neither has. Its size is
 * last frame's (it fits its content); not while the player has placed it themselves or is editing.
 --]]
 local function avoid(w, L, o, pl, we)
@@ -395,10 +405,17 @@ local function avoid(w, L, o, pl, we)
                         end
                     end
                 end
-                try(x0, r.y - 4 - wh);
-                try(x0, r.y + r.h + 4);
-                try(r.x + r.w + 4, y0);
-                try(r.x - 4 - ww, y0);
+                if (L.avoid_side) then
+                    -- (beside it when there's room either side, else above or below)
+                    try(r.x + r.w + 4, y0);
+                    try(r.x - 4 - ww, y0);
+                end
+                if (best == nil) then
+                    try(x0, r.y - 4 - wh);
+                    try(x0, r.y + r.h + 4);
+                    try(r.x + r.w + 4, y0);
+                    try(r.x - 4 - ww, y0);
+                end
                 x0, y0 = bx, by;
             end
         end
@@ -489,7 +506,9 @@ local function step(w, focus, env, look)
     -- 3: hide, place, draw.
     for _, p in ipairs(w.parts) do
         if (p.live and p.spec.cover ~= false and not p.model.keep_game) then
-            hide.cover(p.obj, w); -- (keep_game: the adapter needs the game's own drawing this frame)
+            -- (keep_game: the adapter needs the game's own drawing this frame; reopens: the game opens
+            -- the menu again every frame, which takes its layer from the game's table)
+            hide.cover(p.obj, w, p.spec.reopens and p.menu or nil);
         end
     end
     if (takes(w, focus)) then

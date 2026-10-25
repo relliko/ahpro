@@ -3,19 +3,26 @@
 * tooltip (menu iteminfo) that every screen fills; facelift's tooltip window (windows/iteminfo) is
 * drawn over it, so items look the same everywhere. A facelift list offers the row under the mouse
 * (or its cursor's) with tooltip.offer, and the tooltip shows that instead of the game's item while
-* it's offered. A list draws an item itself only where the game opened no tooltip at all
-* (tooltip.covered() false).
+* it's offered. With two lists up (a Mog House storage beside the bag), the row under the mouse wins
+* over the cursor of the one with focus (prio: tooltip.HOVER over tooltip.CURSOR, in one frame); a list
+* without focus offers only the row under the mouse. A list draws an item itself only where the game
+* opened no tooltip at all (tooltip.covered() false).
 --]]
 
 local menus = require('core.menus');
 
-local tt = {};
+local tt = { CURSOR = 1, HOVER = 2 };
 
-local offer = { id = 0, stack = false, frame = -10 };
+local offer = { id = 0, stack = false, frame = -10, prio = 1 };
 
--- A list's item for the tooltip this frame (frame: the pane's env.frame).
-function tt.offer(id, stack, frame, src)
-    offer.id, offer.stack, offer.frame, offer.src = id or 0, stack == true, frame or 0, src;
+-- A list's item for the tooltip this frame (frame: the pane's env.frame; prio: tt.HOVER for the row
+-- under the mouse, else tt.CURSOR). An offer of lower prio than one made this frame is dropped.
+function tt.offer(id, stack, frame, src, prio)
+    prio, frame = prio or tt.CURSOR, frame or 0;
+    if (offer.frame == frame and offer.prio > prio) then
+        return;
+    end
+    offer.id, offer.stack, offer.frame, offer.src, offer.prio = id or 0, stack == true, frame, src, prio;
 end
 
 -- The item offered this frame or the last, as id, stack and where it is (ui/iteminfo's src: its

@@ -2,7 +2,8 @@
 * facelift - panes/pricebox: the number box (part 'box', adapters/numberbox), kept minimal.
 *
 * An auction house bid or sale: the item and your gil, the amount, quick picks (lowest of the last
-* 10, the usual, the last, and for a sale first 'undercut': a gil under the last sale; Tab steps the amount
+* 10, the usual, the last, and for a sale first 'yours' (below) and 'undercut': a gil under the last
+* sale; Tab steps the amount
 * through them, Shift+Tab back, and the game doesn't get Tab meanwhile: core/keys), Bid / Sell and
 * Cancel, and under them one line on how the amount compares
 * with the prices kept for it (db/prices; a bid 3 times the usual price or more, or a sale for a third
@@ -16,6 +17,11 @@
 * frame before, or whose callback, item or max changed: its steps, picks and the second press start
 * afresh. A new box's amount field takes the keyboard at once (its number selected), so typing a
 * number replaces it, as in the quantity box.
+*
+* Your asking price (db/asks): a sale's price, once given (facelift's Sell, or the game's own Enter:
+* told when the next box opens, by the price the game kept), is kept for the item, singly or as a
+* stack. The next sale of it starts there instead of at 0 (only a box still at 0), and it's the first
+* pick, 'yours' (option repeat_ask; off, neither).
 --]]
 
 local imgui       = require('ui.gui');
@@ -23,30 +29,51 @@ local theme       = require('ui.theme');
 local fmt         = require('ui.fmt');
 local numberentry = require('ui.numberentry');
 local prices      = require('db.prices');
+local asks        = require('db.asks');
 local keys        = require('core.keys');
 local gametext    = require('core.gametext');
 
 local P = {};
 
 function P.new(spec)
-    return { entry = numberentry.new('facelift'), key = nil, frame = nil, armed = nil, picks = {}, picks_key = nil };
+    return { entry = numberentry.new('facelift'), key = nil, frame = nil, armed = nil, picks = {}, picks_key = nil,
+             sale = nil, sale_t = { id = 0, stack = false, value = 0 } };
 end
 
 local function tw(s)
     return (imgui.CalcTextSize(s));
 end
 
--- The quick picks for stats s: { { names, price } }, prices that are the same in one; for a sale,
--- also a gil under the last sale.
-local function picks(st, s, refname, ref, sell)
-    local key = ('%s/%s/%s'):fmt(tostring(s), tostring(ref), tostring(sell));
+-- The sale box seen last (st.sale), as a new box opens: if the game's own Enter gave its price (the
+-- game kept that price: on Cancel it keeps -1), it's your asking price for the item, as when
+-- facelift's Sell gave it (adapters/numberbox).
+local function settle(st, m)
+    local s = st.sale;
+    st.sale = nil;
+    if (s ~= nil and s.value > 0 and m.kept_sale == s.value) then
+        asks.set(s.id, s.stack, s.value);
+    end
+end
+
+-- The quick picks for stats s (or nil): { { names, price } }, prices that are the same in one; for a
+-- sale, first your last asking price (mine) and a gil under the last sale.
+local function picks(st, s, refname, ref, sell, mine)
+    local key = ('%s/%s/%s/%s'):fmt(tostring(s), tostring(ref), tostring(sell), tostring(mine));
     if (st.picks_key == key) then
         return st.picks;
     end
     st.picks_key, st.picks = key, {};
-    local all = { { 'low', s.low }, { refname, ref }, { 'last', s.last } };
-    if (sell and s.last ~= nil and s.last > 1) then
-        table.insert(all, 1, { 'undercut', s.last - 1 }); -- (first: a sale's usual pick)
+    local all = {};
+    if (mine ~= nil) then
+        all[#all + 1] = { 'yours', mine };
+    end
+    if (s ~= nil) then
+        if (sell and s.last ~= nil and s.last > 1) then
+            all[#all + 1] = { 'undercut', s.last - 1 }; -- (first of the market's: a sale's usual pick)
+        end
+        all[#all + 1] = { 'low', s.low };
+        all[#all + 1] = { refname, ref };
+        all[#all + 1] = { 'last', s.last };
     end
     for _, c in ipairs(all) do
         local merged = false;
@@ -100,10 +127,13 @@ function P.draw(st, w, env)
     local cw = math.max(0, w.place.w - 24 * fs);
     local base = imgui.GetCursorPosX();
     local key = ('%x/%x/%d'):fmt(m.cb, m.ctx, m.max);
+    local fresh = false;
     if (st.frame ~= env.frame - 1 or (m.cb ~= 0 and st.key ~= key)) then
+        settle(st, m);
         st.key, st.armed, st.picks_key = key, nil, nil;
         st.entry = numberentry.new('facelift');
         st.entry.refocus = true; -- (typing a number starts at once, over the box's: as the quantity box)
+        fresh = true;
     end
     st.frame = env.frame;
     if (m.cb == 0) then
@@ -112,6 +142,16 @@ function P.draw(st, w, env)
 
     local ah = (m.kind == 'ahbid' or m.kind == 'ahsell') and m.item ~= nil; -- an auction house item
     local sell = m.kind == 'ahsell';
+    local mine = (ah and sell and w.opt('repeat_ask') == 1) and asks.get(m.item.id, m.item.stack) or nil;
+    if (fresh and mine ~= nil and m.cb ~= 0 and m.value == 0 and mine <= m.max) then
+        req('set', mine);
+        m.value = mine; -- (the field shows it now: the request is carried out after the drawing)
+    end
+    if (ah and sell and m.cb ~= 0) then
+        local t = st.sale_t; -- (the box's numbers as of now, for settle)
+        t.id, t.stack, t.value = m.item.id, m.item.stack, m.value;
+        st.sale = t;
+    end
     local e = ah and prices.get(m.item.id, m.item.stack) or nil;
     local s = prices.stats(e);
     local ref = s ~= nil and (s.recent or s.med) or nil;
@@ -149,8 +189,8 @@ function P.draw(st, w, env)
     end
 
     -- Quick picks: set the amount, never bid. The prices on the buttons, their names above.
-    if (ah and s ~= nil) then
-        local ps = picks(st, s, refname, ref, sell);
+    if (ah and (s ~= nil or mine ~= nil)) then
+        local ps = picks(st, s, refname, ref, sell, mine);
         local gap = 4 * fs;
         local bw = (cw - gap * (#ps - 1)) / #ps;
         for i, q in ipairs(ps) do

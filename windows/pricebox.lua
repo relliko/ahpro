@@ -3,7 +3,8 @@
 * (panes/pricebox). For a bid it docks under the prices window (else beside it, else beside the
 * list) so the list and the prices stay in view; anything else goes where the game's box was. It's
 * solid, and the game's own gil window ('money', opened with a bid or a sale) is hidden: the box
-* shows your gil.
+* shows your gil. A sale starts at the price you last asked for the item (db/asks), where the game's
+* starts at 0 (option repeat_ask).
 --]]
 return {
     id = 'pricebox', imgui = 'facelift_moneyctr', name = 'Price box',
@@ -21,5 +22,7 @@ return {
                         { target = 'ahbrowse', at = 'tr', dx = 6, unless = 'ahprices' } } },
     options = {
         hold_at = { label = 'Ask twice at this many times the usual price (0: never)', default = 3, min = 0, max = 10, order = 1 },
+        repeat_ask = { label = 'Start a sale at your last price', kind = 'check', default = 1, min = 0, max = 1, order = 2,
+                       hint = "The price you last put the item up for (singly or as a stack, by any of your characters), and 'yours' among the picks. Off: it starts at 0, as the game's." },
     },
 };
