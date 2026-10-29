@@ -378,8 +378,9 @@ end
 * A layout's avoid list ({ id, ... }): windows this one mustn't cover (the item tooltip, where the
 * game put its own, over facelift's chat box, taller than the game's log; the bag's list beside
 * another list, both wider than the game's). Landing on one, it moves the least way that clears it
-* and stays on the screen: above, below, to its right or to its left (else it stays); with avoid_side,
-* to its right or left whenever either has room, above or below only when neither has. Its size is
+* and stays on the screen: above, below, to its right or to its left (else it stays); with avoid_side
+* (true, or the ids it's for), beside it on the side its own place is on, or where it is when there's no room there (a pair that
+* avoid each other this way: the one with room steps aside). Its size is
 * last frame's (it fits its content); not while the player has placed it themselves or is editing.
 --]]
 local function avoid(w, L, o, pl, we)
@@ -405,10 +406,19 @@ local function avoid(w, L, o, pl, we)
                         end
                     end
                 end
-                if (L.avoid_side) then
-                    -- (beside it when there's room either side, else above or below)
-                    try(r.x + r.w + 4, y0);
-                    try(r.x - 4 - ww, y0);
+                local side = L.avoid_side == true;
+                for _, sid in ipairs(type(L.avoid_side) == 'table' and L.avoid_side or NONE) do
+                    side = side or sid == id;
+                end
+                if (side) then
+                    -- (beside it, on the side its own place is on; without room there it stays, and
+                    -- the other window, avoiding this one, steps aside)
+                    if (x0 + ww / 2 < r.x + r.w / 2) then
+                        try(r.x - 4 - ww, y0);
+                    else
+                        try(r.x + r.w + 4, y0);
+                    end
+                    best = best or 0;
                 end
                 if (best == nil) then
                     try(x0, r.y - 4 - wh);
@@ -439,7 +449,8 @@ local function step(w, focus, env, look)
     local spec = w.spec;
     w.lingering = false;
     -- A window standing aside while another is up (unless_up), or while a game menu is open (unless_open),
-    -- or while another lingers (unless_lingering: this frame's, for one before it in windows/init).
+    -- or while another lingers (unless_lingering: this frame's, for one before it in windows/init), or
+    -- while its own test says so (unless).
     for _, id in ipairs(spec.unless_up or NONE) do
         if (up(id, w)) then
             return;
@@ -455,6 +466,9 @@ local function step(w, focus, env, look)
         if (menus.find(name) ~= nil) then
             return;
         end
+    end
+    if (spec.unless ~= nil and spec.unless(w, focus) == true) then
+        return;
     end
     -- And one that shows only while another is up (while_up: any of them; ahpro's item tooltip).
     if (spec.while_up ~= nil) then

@@ -30,14 +30,16 @@ end
 local BADGE = theme.derive('LIGHT', 0.10);
 
 -- The badges at the top right, ending at right (window x): the game's pictures, or their names.
-local function badges(list, fs, right)
+-- gx: the group's start (window x); inside a group SameLine's x counts from there, not the window.
+local function badges(list, fs, right, gx)
     local bs = math.floor(16 * fs + 0.5);
     local widths, total = {}, 0;
     for i, b in ipairs(list) do
         widths[i] = b.pic ~= nil and bs or (imgui.CalcTextSize(b.label) + 6 * fs);
         total = total + widths[i] + 2 * fs;
     end
-    imgui.SameLine(math.max(imgui.GetCursorPosX(), right - total));
+    imgui.SameLine();
+    imgui.SameLine(math.max(imgui.GetCursorPosX(), right - total) - gx);
     local dl = imgui.GetWindowDrawList();
     for i, b in ipairs(list) do
         local x, y = imgui.GetCursorScreenPos();
@@ -95,10 +97,11 @@ return function (id, stack, fs, wrap, src)
         end
         imgui.SameLine();
     end
+    local gx = imgui.GetCursorPosX();
     imgui.BeginGroup();
     imgui.TextColored(col(v.name_color or itemview.WHITE), v.name);
     if (#v.badges > 0) then
-        badges(v.badges, fs, right);
+        badges(v.badges, fs, right, gx);
     end
     if (v.typeline ~= nil and v.typeline ~= '') then
         imgui.TextColored(col(itemview.WHITE), v.typeline);
