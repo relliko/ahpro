@@ -7,7 +7,8 @@
 *   c  item  stack  time                                              when its price history was read
 *   f  item  stack  time                                              forgotten: the lines above for it
 * New lines are added to the end; a sale already kept (same item, stack, date, price and names) isn't
-* added again, and a check at most once a minute an item. It's read the first time it's needed.
+* added again, and a check at most once a minute an item. It's read the first time it's needed, and
+* what other addons add to it (ahweb, from the website) is read in as it comes.
 * With prices.path nil it's kept in memory only.
 --]]
 
@@ -67,37 +68,69 @@ local function keep(e, price, date, seller, buyer)
     return true;
 end
 
-local function load()
-    loaded = true;
-    if (prices.path == nil) then
-        return;
-    end
-    local f = io.open(prices.path, 'r');
-    if (f == nil) then
-        return; -- nothing kept yet
-    end
-    for line in f:lines() do
-        local id, st, date, price, seller, buyer = line:match('^(%d+)\t([01])\t(%d+)\t(%d+)\t([^\t]*)\t([^\t\r]*)');
-        if (id ~= nil) then
-            keep(entry(key(tonumber(id), st == '1')), tonumber(price), tonumber(date), seller, buyer);
-        else
-            local fid, fst = line:match('^f\t(%d+)\t([01])\t');
-            if (fid ~= nil) then
-                local k = key(tonumber(fid), fst == '1');
-                prices.count = prices.count - #(items[k] ~= nil and items[k].sales or {});
-                items[k] = nil;
-            end
-            local cid, cst, t = line:match('^c\t(%d+)\t([01])\t(%d+)');
-            if (cid ~= nil) then
-                local e = entry(key(tonumber(cid), cst == '1'));
-                t = tonumber(t);
-                if (e.checked == nil or t > e.checked) then
-                    e.checked, e.written = t, t;
-                end
+local offset = 0;       -- how much of the file has been read
+local next_look = 0;    -- os.clock() when it's next checked for lines another addon added
+
+local function apply(line)
+    local id, st, date, price, seller, buyer = line:match('^(%d+)\t([01])\t(%d+)\t(%d+)\t([^\t]*)\t([^\t\r]*)');
+    if (id ~= nil) then
+        keep(entry(key(tonumber(id), st == '1')), tonumber(price), tonumber(date), seller, buyer);
+    else
+        local fid, fst = line:match('^f\t(%d+)\t([01])\t');
+        if (fid ~= nil) then
+            local k = key(tonumber(fid), fst == '1');
+            prices.count = prices.count - #(items[k] ~= nil and items[k].sales or {});
+            items[k] = nil;
+        end
+        local cid, cst, t = line:match('^c\t(%d+)\t([01])\t(%d+)');
+        if (cid ~= nil) then
+            local e = entry(key(tonumber(cid), cst == '1'));
+            t = tonumber(t);
+            if (e.checked == nil or t > e.checked) then
+                e.checked, e.written = t, t;
             end
         end
     end
+end
+
+--[[
+* Reads the file from where it was last read: all of it the first time, then what's been added
+* since (by facelift, or ahweb from the website: a line read twice changes nothing). Only whole
+* lines; one still being written is read next time.
+--]]
+local function catch_up()
+    local f = io.open(prices.path, 'rb');
+    if (f == nil) then
+        return; -- nothing kept yet
+    end
+    local size = f:seek('end');
+    if (size < offset) then
+        offset = 0;  -- it was replaced: what's read again is kept once
+    end
+    f:seek('set', offset);
+    local text = f:read('*a') or '';
     f:close();
+    local whole = text:match('^.*\n') or '';
+    offset = offset + #whole;
+    for line in whole:gmatch('[^\n]+') do
+        apply(line);
+    end
+end
+
+local function load()
+    loaded, offset = true, 0;
+    if (prices.path == nil) then
+        return;
+    end
+    catch_up();
+end
+
+-- Takes in lines another addon added to the file, at most every few seconds.
+local function look()
+    if (prices.path ~= nil and os.clock() >= next_look) then
+        next_look = os.clock() + 3;
+        catch_up();
+    end
 end
 
 local function dir_of(path)
@@ -118,6 +151,9 @@ local function write(lines)
         if (probe ~= nil) then
             probe:close();
         end
+        if (loaded and not new) then
+            catch_up();  -- what another addon added first, so what's next is read from past these lines
+        end
         local f, why = io.open(prices.path, 'a');
         if (f == nil) then
             error(why);
@@ -127,6 +163,9 @@ local function write(lines)
         end
         f:write(table.concat(lines));
         f:close();
+        if (loaded) then
+            catch_up();  -- these lines, already kept
+        end
     end);
     prices.error = not ok and tostring(err) or nil;
 end
@@ -192,6 +231,7 @@ function prices.get(id, stack)
     if (not loaded) then
         load();
     end
+    look();
     local e = items[key(id, stack)];
     if (e == nil or (#e.sales == 0 and e.checked == nil)) then
         return nil;
@@ -244,6 +284,7 @@ function prices.summary()
     if (not loaded) then
         load();
     end
+    look();
     local n, sales = 0, 0;
     for _, e in pairs(items) do
         if (#e.sales > 0) then
